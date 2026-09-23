@@ -1,0 +1,27 @@
+import { MetadataRoute } from 'next'
+
+export default function manifest(): MetadataRoute.Manifest {
+  return {
+    name: 'meisterpay Plataforma',
+    short_name: 'meisterpay',
+    description: 'Plataforma premium de pagamentos e gestão de vendas',
+    start_url: '/',
+    display: 'standalone',
+    background_color: '#09090b',
+    theme_color: '#8b5cf6',
+    icons: [
+      {
+        src: '/logo-1000x1000.webp',
+        sizes: '192x192',
+        type: 'image/webp',
+        purpose: 'maskable',
+      },
+      {
+        src: '/logo-1000x1000.webp',
+        sizes: '512x512',
+        type: 'image/webp',
+        purpose: 'maskable',
+      },
+    ],
+  }
+}

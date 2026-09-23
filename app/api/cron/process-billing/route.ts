@@ -1,0 +1,172 @@
+import { createClient } from "@supabase/supabase-js";
+import { NextResponse } from "next/server";
+import Stripe from "stripe";
+
+// Force this route to be dynamic so it's not pre-rendered during build
+export const dynamic = 'force-dynamic';
+
+export async function GET(req: Request) {
+  // Initialize Stripe and Supabase INSIDE the handler to avoid build-time errors 
+  // when environment variables are missing.
+  const stripeSecretKey = process.env.STRIPE_SECRET_KEY;
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+  if (!stripeSecretKey || !supabaseUrl || !supabaseServiceKey) {
+    console.error("[CRON] Missing environment variables for billing process.");
+    return NextResponse.json({ error: "Configuration Error" }, { status: 500 });
+  }
+
+  const stripe = new Stripe(stripeSecretKey, {
+    apiVersion: '2023-10-16',
+  } as any);
+
+  const supabase = createClient(supabaseUrl, supabaseServiceKey);
+
+  // 1. Basic security check
+  const { searchParams } = new URL(req.url);
+  const token = searchParams.get("token");
+
+  console.log("[CRON] Request received for process-billing. Validating token...");
+
+  if (token !== process.env.CRON_SECRET) {
+    console.error("[CRON] Unauthorized attempt. Token mismatch or missing.");
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  try {
+    const now = new Date().toISOString();
+    console.log(`[CRON] Starting billing check at ${now}`);
+
+    // 2. Find users who are due for billing
+    const { data: profiles, error: profileError } = await supabase
+      .from("profiles")
+      .select("id, stripe_customer_id, plan_id, email, billing_failed_attempts")
+      .lte("next_billing_date", now)
+      .not("stripe_customer_id", "is", null)
+      .not("is_admin", "eq", true);
+
+    if (profileError) {
+      console.error("[CRON] Error querying profiles:", profileError);
+      throw profileError;
+    }
+
+    console.log(`[CRON] Found ${profiles?.length ?? 0} profile(s) due for billing.`);
+
+    const results = [];
+
+    for (const profile of profiles || []) {
+      console.log(`[CRON] Processing profile ${profile.id} (${profile.email})...`);
+
+      // 3. Sum unbilled fees for this user
+      const { data: sales, error: salesError } = await supabase
+        .from("sales")
+        .select("id, platform_fee")
+        .eq("user_id", profile.id)
+        .eq("is_fee_billed", false)
+        .eq("status", "succeeded");
+
+      if (salesError) {
+        console.error(`[CRON] Error fetching sales for user ${profile.id}:`, salesError);
+        continue;
+      }
+
+      const totalFee = sales.reduce((acc, s) => acc + (Number(s.platform_fee) || 0), 0);
+      console.log(`[CRON] User ${profile.email}: found ${sales.length} unbilled sale(s), total fee: R$ ${totalFee.toFixed(2)}`);
+
+      if (totalFee <= 0) {
+        console.log(`[CRON] User ${profile.email}: zero fees due. Advancing next_billing_date by 15 days.`);
+        await supabase.from("profiles")
+          .update({ next_billing_date: new Date(Date.now() + 15 * 24 * 60 * 60 * 1000).toISOString() })
+          .eq("id", profile.id);
+        results.push({ email: profile.email, status: "no_fees_date_updated" });
+        continue;
+      }
+
+      try {
+        console.log(`[CRON] User ${profile.email}: fetching Stripe payment methods for customer ${profile.stripe_customer_id}...`);
+        const paymentMethods = await stripe.paymentMethods.list({
+          customer: profile.stripe_customer_id!,
+          type: 'card',
+        });
+
+        if (paymentMethods.data.length === 0) {
+          throw new Error("Nenhum método de pagamento encontrado");
+        }
+
+        console.log(`[CRON] User ${profile.email}: creating PaymentIntent for R$ ${totalFee.toFixed(2)}...`);
+        const paymentIntent = await stripe.paymentIntents.create({
+          amount: Math.round(totalFee * 100),
+          currency: 'brl',
+          customer: profile.stripe_customer_id!,
+          payment_method: paymentMethods.data[0].id,
+          off_session: true,
+          confirm: true,
+          description: `Taxas de plataforma meisterpay - Ciclo 15 dias`,
+          metadata: {
+            user_id: profile.id,
+            type: 'platform_billing'
+          }
+        });
+
+        if (paymentIntent.status === 'succeeded') {
+          console.log(`[CRON] User ${profile.email}: payment succeeded (${paymentIntent.id}). Updating DB records.`);
+          const saleIds = sales.map(s => s.id);
+
+          await supabase.from("sales")
+            .update({ is_fee_billed: true })
+            .in("id", saleIds);
+
+          await supabase.from("profiles")
+            .update({
+              next_billing_date: new Date(Date.now() + 15 * 24 * 60 * 60 * 1000).toISOString(),
+              billing_failed_attempts: 0
+            })
+            .eq("id", profile.id);
+
+          // Log success to billing history
+          await supabase.from("billing_history").insert({
+            user_id: profile.id,
+            amount: totalFee,
+            status: "succeeded",
+            stripe_payment_intent_id: paymentIntent.id
+          });
+
+          results.push({ email: profile.email, status: "success", amount: totalFee });
+        } else {
+          throw new Error(`Status de pagamento inválido: ${paymentIntent.status}`);
+        }
+      } catch (stripeError: any) {
+        console.error(`[CRON] Error charging user ${profile.email}:`, stripeError.message);
+
+        // Log failure to billing history
+        await supabase.from("billing_history").insert({
+          user_id: profile.id,
+          amount: totalFee,
+          status: "failed",
+          error_message: stripeError.message
+        });
+
+        // Increment failed attempts and set next billing to tomorrow
+        const failedAttempts = (profile.billing_failed_attempts || 0) + 1;
+        const nextDate = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+
+        await supabase.from("profiles")
+          .update({
+            next_billing_date: nextDate,
+            billing_failed_attempts: failedAttempts
+          })
+          .eq("id", profile.id);
+
+        results.push({ email: profile.email, status: "failed", error: stripeError.message, attempts: failedAttempts });
+      }
+    }
+
+    console.log(`[CRON] Finished process-billing. Processed ${results.length} profile(s).`);
+    return NextResponse.json({ processed: results.length, results });
+
+  } catch (error: any) {
+    console.error("[CRON] Fatal error:", error);
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+}

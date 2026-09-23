@@ -1,0 +1,288 @@
+/**
+ * Mail Utility using Resend API
+ */
+
+interface EmailOptions {
+  to: string;
+  subject: string;
+  html: string;
+}
+
+export async function sendEmail({ to, subject, html }: EmailOptions) {
+  const apiKey = process.env.RESEND_API_KEY;
+
+  if (!apiKey) {
+    console.error('[MAIL] Error: RESEND_API_KEY not found in environment variables.');
+    return { success: false, error: 'Missing API Key' };
+  }
+
+  try {
+    const response = await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        from: 'meisterpay <onboarding@meisterpay.com.br>',
+        to: [to],
+        subject: subject,
+        html: html,
+      }),
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      console.error('[MAIL] Resend API Error Response:', JSON.stringify(data, null, 2));
+      return { success: false, error: data };
+    }
+
+    console.log('[MAIL] Email sent successfully via Resend!', data.id);
+    return { success: true, data };
+  } catch (error) {
+    console.error('[MAIL] Exception:', error);
+    return { success: false, error };
+  }
+}
+
+/**
+ * Send Order Confirmation Email (Localized)
+ */
+export async function sendOrderConfirmationEmail(sale: any, productsArg: any | any[], lang: string = 'pt') {
+  const name = sale.customer_name || 'Cliente';
+  const products = Array.isArray(productsArg) ? productsArg : [productsArg];
+
+  const mainProductName = products[0]?.name || 'seu produto';
+
+  const translations: Record<string, { subject: string; body: string; button: string }> = {
+    pt: {
+      subject: `meisterpay | Compra aprovada! O acesso chegou!`,
+      body: `Parabéns pela compra, ${name}!<br/><br/>Abaixo estão os acessos para as suas compras:`,
+      button: 'Acessar Produto'
+    },
+    en: {
+      subject: `meisterpay | Purchase approved! Your access is here!`,
+      body: `Congratulations on your purchase, ${name}!<br/><br/>Below are the accesses for your purchases:`,
+      button: 'Access Product'
+    },
+    es: {
+      subject: `meisterpay | ¡Compra aprobada! ¡Ya tienes acceso!`,
+      body: `¡Felicitaciones por tu compra, ${name}!<br/><br/>A continuación se muestran los accesos para sus compras:`,
+      button: 'Acceder al Producto'
+    },
+    it: {
+      subject: `meisterpay | Acquisto approvato! Il tuo accesso è arrivato!`,
+      body: `Congratulazioni per l'acquisto, ${name}!<br/><br/>Di seguito trovi i link di accesso ai tuoi acquisti:`,
+      button: 'Accedi al Prodotto'
+    },
+    fr: {
+      subject: `meisterpay | Achat approuvé! Votre accès est arrivé!`,
+      body: `Félicitations pour votre achat, ${name}!<br/><br/>Ci-dessous se trouvent vos accès pour vos achats:`,
+      button: 'Accéder au Produit'
+    }
+  };
+
+  const t = translations[lang] || translations.pt;
+
+  let productsHtml = '';
+  products.forEach((p: any) => {
+    if (!p) return;
+    const accessLink = p.delivery_link || 'https://app.meisterpay.com.br';
+    productsHtml += `
+      <div style="margin-bottom: 24px; padding: 20px; background-color: #f9fafb; border-radius: 8px; border: 1px solid #e5e7eb;">
+        <h3 style="margin-top: 0; color: #374151; font-size: 18px;">${p.name}</h3>
+        <div style="margin-top: 16px;">
+          <a href="${accessLink}" style="background-color: #8b5cf6; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: bold; display: inline-block;">
+            ${t.button}
+          </a>
+        </div>
+        <p style="margin-top: 12px; margin-bottom: 0; font-size: 13px; color: #6b7280;">
+          Link direto: <a href="${accessLink}" style="color: #8b5cf6;">${accessLink}</a>
+        </p>
+      </div>
+    `;
+  });
+
+  const html = `
+    <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #eee; border-radius: 10px;">
+      <h2 style="color: #8b5cf6;">${t.subject}</h2>
+      <p style="color: #333; line-height: 1.6; margin-bottom: 30px;">${t.body}</p>
+      
+      ${productsHtml}
+      
+      <hr style="border: 0; border-top: 1px solid #eee; margin: 30px 0;" />
+      
+      <p style="color: #999; font-size: 12px; text-align: center;">
+        meisterpay - Sua plataforma de pagamentos globais.
+      </p>
+    </div>
+  `;
+
+  return sendEmail({
+    to: sale.customer_email,
+    subject: t.subject,
+    html: html
+  });
+}
+
+/**
+ * Resend Access Email with specific text
+ */
+export async function sendResendAccessEmail(sale: any, product: any, lang: string = 'pt') {
+  const productName = product.name;
+  const accessLink = product.delivery_link || 'https://app.meisterpay.com.br';
+
+  const translations: Record<string, { subject: string; body: string; button: string; footer: string }> = {
+    pt: {
+      subject: "Seu acesso chegou",
+      body: "Estamos enviado seu acesso, para acessar seu produto, clique abaixo e aproveite da melhor forma. Obrigado!",
+      button: "Acessar Produto",
+      footer: "Sua plataforma de pagamentos globais."
+    },
+    en: {
+      subject: "Your access has arrived",
+      body: "We are sending your access. To access your product, click below and enjoy. Thank you!",
+      button: "Access Product",
+      footer: "Your global payment platform."
+    },
+    es: {
+      subject: "Tu acceso ha llegado",
+      body: "Estamos enviando tu acceso. Para acceder a tu producto, haz clic abajo y disfruta. ¡Gracias!",
+      button: "Acceder al Producto",
+      footer: "Tu plataforma de pagos globales."
+    },
+    it: {
+      subject: "Il tuo accesso è arrivato",
+      body: "Ti stiamo inviando il tuo accesso. Per accedere al tuo prodotto, clicca qui sotto e buon divertimento. Grazie!",
+      button: "Accedi al Prodotto",
+      footer: "La tua piattaforma di pagamenti globali."
+    },
+    fr: {
+      subject: "Votre accès est arrivé",
+      body: "Nous vous envoyons votre accès. Pour accéder à votre produit, cliquez ci-dessous et profitez-en. Merci!",
+      button: "Accéder au Produit",
+      footer: "Votre plateforme de paiements globaux."
+    }
+  };
+
+  const t = translations[lang] || translations.pt;
+
+  const html = `
+    <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; padding: 30px; border: 1px solid #f0f0f0; border-radius: 16px; background-color: #ffffff; box-shadow: 0 4px 12px rgba(0,0,0,0.05);">
+      <div style="text-align: center; margin-bottom: 30px;">
+        <h1 style="color: #8b5cf6; margin: 0; font-size: 24px;">${t.subject}</h1>
+      </div>
+      
+      <p style="color: #4b5563; line-height: 1.8; font-size: 16px; margin-bottom: 30px;">
+        ${t.body}
+      </p>
+      
+      <div style="margin: 40px 0; text-align: center;">
+        <a href="${accessLink}" style="background-color: #8b5cf6; color: white; padding: 16px 32px; text-decoration: none; border-radius: 12px; font-weight: bold; display: inline-block; font-size: 16px; box-shadow: 0 10px 15px -3px rgba(139, 92, 246, 0.3);">
+          ${t.button}
+        </a>
+      </div>
+      
+      <p style="color: #9ca3af; font-size: 13px; text-align: center; margin-top: 40px; border-top: 1px solid #f3f4f6; padding-top: 20px;">
+        meisterpay - ${t.footer}
+      </p>
+    </div>
+  `;
+
+  return sendEmail({
+    to: sale.customer_email,
+    subject: t.subject,
+    html: html
+  });
+}
+
+/**
+ * Recovery Email for Refused/Abandoned Cart
+ */
+export async function sendRecoveryEmail(sale: any, product: any, checkoutHash: string, lang: string = 'pt') {
+  const name = sale.customer_name || 'Amigo(a)';
+  const productName = product.name;
+  const checkoutLink = `https://app.meisterpay.com.br/pay/${checkoutHash}`;
+
+  const translations: Record<string, { subject: string; greeting: string; body1: string; body2: string; button: string; signOff: string }> = {
+    pt: {
+      subject: "Deu tudo certo com o seu pedido?",
+      greeting: `Olá, ${name}.`,
+      body1: `Notei que você deixou o <strong>${productName}</strong> no carrinho.`,
+      body2: "Estou passando para avisar que a reserva do seu item expira em breve e não consigo garantir o preço atual por muito tempo devido à alta demanda.",
+      button: "Garantir meu Produto agora",
+      signOff: "Te vejo lá dentro!"
+    },
+    en: {
+      subject: "Is everything okay with your order?",
+      greeting: `Hi, ${name}.`,
+      body1: `I noticed you left <strong>${productName}</strong> in your cart.`,
+      body2: "I'm reaching out to let you know that your item reservation expires soon and I can't guarantee the current price for long due to high demand.",
+      button: "Secure my Product now",
+      signOff: "See you inside!"
+    },
+    es: {
+      subject: "¿Todo bien con tu pedido?",
+      greeting: `Hola, ${name}.`,
+      body1: `Noté que dejaste <strong>${productName}</strong> en el carrito.`,
+      body2: "Te escribo para avisarte que la reserva de tu artículo expira pronto e no puedo garantizar el precio actual por mucho tiempo debido a la alta demanda.",
+      button: "Asegurar mi Producto ahora",
+      signOff: "¡Te veo dentro!"
+    },
+    it: {
+      subject: "Tutto bene con il tuo ordine?",
+      greeting: `Ciao, ${name}.`,
+      body1: `Ho notato che hai lasciato <strong>${productName}</strong> nel carrello.`,
+      body2: "Ti contatto per avvisarti che la prenotazione del tuo articolo scadrà presto e non posso garantire il prezzo attuale a lungo a causa dell'elevata richiesta.",
+      button: "Assicura il mio Prodotto ora",
+      signOff: "Ci vediamo dentro!"
+    },
+    fr: {
+      subject: "Tout va bien avec votre commande?",
+      greeting: `Bonjour, ${name}.`,
+      body1: `J'ai remarqué que vous avez laissé <strong>${productName}</strong> dans votre panier.`,
+      body2: "Je vous contacte pour vous informer que la réservation de votre article expire bientôt et que je ne peux pas garantir le prix actuel très longtemps en raison d'une forte demande.",
+      button: "Sécuriser mon Produit maintenant",
+      signOff: "À très vite!"
+    }
+  };
+
+  const t = translations[lang] || translations.pt;
+
+  const html = `
+    <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; padding: 40px; border: 1px solid #f3f4f6; border-radius: 24px; background-color: #ffffff;">
+      <h2 style="color: #1f2937; font-size: 20px; margin-bottom: 24px;">${t.greeting}</h2>
+      
+      <p style="color: #4b5563; line-height: 1.8; font-size: 16px; margin-bottom: 20px;">
+        ${t.body1}
+      </p>
+      
+      <p style="color: #4b5563; line-height: 1.8; font-size: 16px; margin-bottom: 32px;">
+        ${t.body2}
+      </p>
+      
+      <div style="margin: 40px 0; text-align: center;">
+        <a href="${checkoutLink}" style="background-color: #f59e0b; color: white; padding: 18px 36px; text-decoration: none; border-radius: 14px; font-weight: 800; display: inline-block; font-size: 16px; text-transform: uppercase; letter-spacing: 0.05em; box-shadow: 0 10px 20px -5px rgba(245, 158, 11, 0.4);">
+          ${t.button}
+        </a>
+      </div>
+      
+      <p style="color: #1f2937; font-weight: bold; font-size: 16px; margin-top: 32px;">
+        ${t.signOff}
+      </p>
+      
+      <div style="margin-top: 48px; padding-top: 24px; border-top: 1px solid #f3f4f6; text-align: center;">
+        <p style="color: #9ca3af; font-size: 12px; font-weight: 500; letter-spacing: 0.1em; text-transform: uppercase;">
+          meisterpay
+        </p>
+      </div>
+    </div>
+  `;
+
+  return sendEmail({
+    to: sale.customer_email,
+    subject: t.subject,
+    html: html
+  });
+}
