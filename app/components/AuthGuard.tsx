@@ -16,7 +16,7 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     const checkStatus = async () => {
       // Simplificação total para garantir que /pay nunca peça login
-      const isPublicPage = pathname === "/login" || /^\/pay(\/|$)/.test(pathname) || pathname === "/aguardando-aprovacao" || pathname === "/auth/callback";
+      const isPublicPage = pathname === "/login" || /^\/pay(\/|$)/.test(pathname) || pathname === "/aguardando-aprovacao" || pathname === "/auth/callback" || pathname === "/recuperar-senha" || pathname === "/redefinir-senha";
 
       if (isPublicPage) {
         console.log("Auth Guard: Public route detected, bypassing check.", pathname);

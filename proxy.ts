@@ -4,6 +4,8 @@ import { NextResponse, type NextRequest } from "next/server";
 export async function proxy(request: NextRequest) {
   const isPublicRoute =
     request.nextUrl.pathname === '/login' ||
+    request.nextUrl.pathname === '/recuperar-senha' ||
+    request.nextUrl.pathname === '/redefinir-senha' ||
     request.nextUrl.pathname === '/upsell.js' ||
     request.nextUrl.pathname.startsWith('/api/upsell') ||
     request.nextUrl.pathname.startsWith('/api/checkout') ||

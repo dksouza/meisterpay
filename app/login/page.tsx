@@ -5,10 +5,13 @@ export const dynamic = 'force-dynamic';
 
 
 import { useState } from "react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { login, signup } from "../actions/authActions";
 import { Mail, Lock, Loader2, ArrowRight, User, Eye, EyeOff } from "lucide-react";
 
 export default function LoginPage() {
+  const router = useRouter();
   const [isLogin, setIsLogin] = useState(true);
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState<{ type: "error" | "success"; text: string } | null>(null);
@@ -73,7 +76,18 @@ export default function LoginPage() {
             </div>
 
             <div className="form-group">
-              <label className="form-label">Senha</label>
+              <div className="flex items-center justify-between mb-1">
+                <label className="form-label mb-0">Senha</label>
+                {isLogin && (
+                  <button
+                    type="button"
+                    onClick={() => router.push("/recuperar-senha")}
+                    className="text-xs text-purple-400 hover:text-purple-300 transition-colors cursor-pointer border-0 bg-transparent p-0"
+                  >
+                    Esqueceu a senha?
+                  </button>
+                )}
+              </div>
               <div className="input-with-icon relative">
                 <Lock size={18} className="input-icon" />
                 <input
