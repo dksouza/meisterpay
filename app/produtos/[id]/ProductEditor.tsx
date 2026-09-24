@@ -389,14 +389,14 @@ export default function ProductEditor({ product }: { product: any }) {
   };
 
   const openCheckoutLink = (hash: string) => {
-    const url = `https://checkout.meisterpay.com.br/pay/${hash}`;
+    const url = `https://app.meisterpay.com.br/pay/${hash}`;
     window.open(url, "_blank");
   };
 
   const [copiedId, setCopiedId] = useState<string | null>(null);
 
   const copyToClipboard = (hash: string, id: string) => {
-    const url = `https://checkout.meisterpay.com.br/pay/${hash}`;
+    const url = `https://app.meisterpay.com.br/pay/${hash}`;
     navigator.clipboard.writeText(url);
     setCopiedId(id);
     setTimeout(() => setCopiedId(null), 2000);
@@ -844,7 +844,7 @@ export default function ProductEditor({ product }: { product: any }) {
                             <input
                               type="text"
                               readOnly
-                              value={`https://checkout.meisterpay.com.br/pay/${checkout.hash}`}
+                              value={`https://app.meisterpay.com.br/pay/${checkout.hash}`}
                               className={styles.linkInput}
                             />
                             <button
@@ -1219,7 +1219,7 @@ export default function ProductEditor({ product }: { product: any }) {
                             <input
                               type="text"
                               readOnly
-                              value={checkout.hash ? `https://checkout.meisterpay.com.br/pay/${checkout.hash}` : "Link não disponível"}
+                              value={checkout.hash ? `https://app.meisterpay.com.br/pay/${checkout.hash}` : "Link não disponível"}
                               className={styles.linkInput}
                             />
                             <button
@@ -1268,7 +1268,7 @@ export default function ProductEditor({ product }: { product: any }) {
                             <input
                               type="text"
                               readOnly
-                              value={offer.hash ? `https://checkout.meisterpay.com.br/pay/${offer.hash}` : "Link não disponível"}
+                              value={offer.hash ? `https://app.meisterpay.com.br/pay/${offer.hash}` : "Link não disponível"}
                               className={styles.linkInput}
                             />
                             <button

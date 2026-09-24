@@ -505,7 +505,7 @@ export default function AdminApprovalsPage() {
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
                     {selectedUserDetails.topOffers.map((offer: any, index: number) => {
                       const offerUrl = offer.hash
-                        ? `https://checkout.meisterpay.com.br/pay/${offer.hash}`
+                        ? `https://app.meisterpay.com.br/pay/${offer.hash}`
                         : null;
 
                       const rankColors = [
