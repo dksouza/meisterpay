@@ -116,8 +116,10 @@
                 const data = await res.json();
                 if (data.success) {
                     // Propaga o novo PI (ou o atual) para a próxima página do funil
+                    const nextPi = data.pi || pi;
+                    sessionStorage.setItem('meisterpay_last_pi', nextPi);
                     const nextUrl = new URL(strategy.accept_url || '/thank-you', window.location.origin);
-                    nextUrl.searchParams.set('pi', data.pi || pi);
+                    nextUrl.searchParams.set('pi', nextPi);
                     window.location.href = nextUrl.toString();
                 } else {
                     alert('An error occurred while processing the upsell purchase. Check the console.');
