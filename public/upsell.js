@@ -114,7 +114,7 @@
                 });
 
                 const data = await res.json();
-                if (data.success) {
+                if (data && data.success) {
                     // Propaga o novo PI (ou o atual) para a próxima página do funil
                     const nextPi = data.pi || pi;
                     sessionStorage.setItem('meisterpay_last_pi', nextPi);
@@ -122,14 +122,21 @@
                     nextUrl.searchParams.set('pi', nextPi);
                     window.location.href = nextUrl.toString();
                 } else {
-                    alert('An error occurred while processing the upsell purchase. Check the console.');
-                    acceptBtn.disabled = false;
-                    acceptBtn.innerText = originalText;
+                    // Qualquer resposta diferente de aprovado tem comportamento de não aprovado:
+                    // segue o fluxo de recusa da estratégia do produtor
+                    console.warn('meisterpay Upsell: Pagamento não aprovado, seguindo fluxo de recusa...', data);
+                    const declinePi = (data && data.pi) || pi;
+                    sessionStorage.setItem('meisterpay_last_pi', declinePi);
+                    const nextUrl = new URL(strategy.decline_url || '/thank-you', window.location.origin);
+                    nextUrl.searchParams.set('pi', declinePi);
+                    window.location.href = nextUrl.toString();
                 }
             } catch (err) {
-                alert('Connection error. Please check your internet connection.');
-                acceptBtn.disabled = false;
-                acceptBtn.innerText = originalText;
+                console.error('meisterpay Upsell Error:', err);
+                // Em caso de erro de conexão, também assume comportamento de não aprovado
+                const nextUrl = new URL(strategy.decline_url || '/thank-you', window.location.origin);
+                nextUrl.searchParams.set('pi', pi);
+                window.location.href = nextUrl.toString();
             }
         });
 

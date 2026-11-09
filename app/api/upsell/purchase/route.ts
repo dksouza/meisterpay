@@ -151,42 +151,61 @@ export async function POST(req: Request) {
 
     const isSubscription = upsellCheckout?.payment_type === "subscription";
 
+    let isApproved = false;
+    let failureReason: string | null = null;
     let newPiId: string;
     let subscriptionId: string | null = null;
 
-    if (isSubscription) {
-      console.log("Upsell is SUBSCRIPTION. Processing recurring charge via Stripe Subscriptions...");
+    try {
+      if (isSubscription) {
+        console.log("Upsell is SUBSCRIPTION. Processing recurring charge via Stripe Subscriptions...");
 
-      // Garantir método de pagamento vinculado ao cliente
-      try {
-        await stripe.paymentMethods.attach(pmId, { customer: customerId });
-      } catch (attachErr: any) {
-        // Ignora se o método já estiver anexado a este cliente
-        console.log("Note: Payment method already attached or:", attachErr.message);
-      }
+        // Garantir método de pagamento vinculado ao cliente
+        try {
+          await stripe.paymentMethods.attach(pmId, { customer: customerId });
+        } catch (attachErr: any) {
+          // Ignora se o método já estiver anexado a este cliente
+          console.log("Note: Payment method already attached or:", attachErr.message);
+        }
 
-      await stripe.customers.update(customerId, {
-        invoice_settings: { default_payment_method: pmId }
-      });
-
-      // Obter ou criar Produto e Preço Recorrente na Stripe
-      let stripeProductId = product.stripe_product_id;
-      let priceId: string;
-
-      if (stripeProductId) {
-        const existingPrices = await stripe.prices.list({
-          product: stripeProductId,
-          active: true,
-          limit: 10
+        await stripe.customers.update(customerId, {
+          invoice_settings: { default_payment_method: pmId }
         });
 
-        const matchingRecurring = existingPrices.data.find(
-          p => p.type === "recurring" && p.unit_amount === Math.round(amount * 100) && p.currency === currency.toLowerCase()
-        );
+        // Obter ou criar Produto e Preço Recorrente na Stripe
+        let stripeProductId = product.stripe_product_id;
+        let priceId: string;
 
-        if (matchingRecurring) {
-          priceId = matchingRecurring.id;
+        if (stripeProductId) {
+          const existingPrices = await stripe.prices.list({
+            product: stripeProductId,
+            active: true,
+            limit: 10
+          });
+
+          const matchingRecurring = existingPrices.data.find(
+            p => p.type === "recurring" && p.unit_amount === Math.round(amount * 100) && p.currency === currency.toLowerCase()
+          );
+
+          if (matchingRecurring) {
+            priceId = matchingRecurring.id;
+          } else {
+            const newPrice = await stripe.prices.create({
+              product: stripeProductId,
+              unit_amount: Math.round(amount * 100),
+              currency: currency.toLowerCase(),
+              recurring: { interval: "month" }
+            });
+            priceId = newPrice.id;
+          }
         } else {
+          const stripeProduct = await stripe.products.create({
+            name: product.name || "Digital Content",
+            description: product.description || "Access to digital content",
+            metadata: { product_id: product.id }
+          });
+          stripeProductId = stripeProduct.id;
+
           const newPrice = await stripe.prices.create({
             product: stripeProductId,
             unit_amount: Math.round(amount * 100),
@@ -195,72 +214,96 @@ export async function POST(req: Request) {
           });
           priceId = newPrice.id;
         }
+
+        // Criar assinatura One-Click (off-session)
+        const subscription = await stripe.subscriptions.create({
+          customer: customerId,
+          items: [{ price: priceId }],
+          default_payment_method: pmId,
+          off_session: true,
+          payment_behavior: "allow_incomplete",
+          expand: ["latest_invoice", "latest_invoice.payment_intent"],
+          metadata: {
+            strategy_id: strategy.id,
+            parent_pi: parentPiId || previous_pi,
+            product_id: product.id,
+            user_id: strategy.user_id,
+            is_upsell: "true",
+            customer_name: previousSale?.customer_name || "",
+            customer_email: previousSale?.customer_email || ""
+          }
+        });
+
+        subscriptionId = subscription.id;
+        const invoice = subscription.latest_invoice as any;
+        const invoicePaymentIntent = invoice?.payment_intent;
+        newPiId = typeof invoicePaymentIntent === "object" && invoicePaymentIntent
+          ? invoicePaymentIntent.id
+          : (typeof invoicePaymentIntent === "string" ? invoicePaymentIntent : subscription.id);
+
+        const piStatus = typeof invoicePaymentIntent === "object" ? invoicePaymentIntent?.status : null;
+
+        // Assinatura só é considerada aprovada se estiver active/trialing E o pagamento da fatura for succeeded
+        if ((subscription.status === "active" || subscription.status === "trialing") && (!piStatus || piStatus === "succeeded")) {
+          isApproved = true;
+          console.log("Upsell Subscription Success! ID:", subscription.id, "PI:", newPiId);
+        } else {
+          isApproved = false;
+          const lastErr = typeof invoicePaymentIntent === "object" ? invoicePaymentIntent?.last_payment_error : null;
+          failureReason = lastErr?.message || lastErr?.decline_code || `Assinatura não aprovada (Status: ${subscription.status})`;
+          console.warn("Upsell Subscription Not Approved! Status:", subscription.status, "PI Status:", piStatus, "Reason:", failureReason);
+
+          // Cancela a assinatura incompleta para não cobrar futuramente
+          try {
+            if (subscription.status === "incomplete" || subscription.status === "incomplete_expired") {
+              await stripe.subscriptions.cancel(subscription.id);
+            }
+          } catch (cancelErr) {
+            console.error("Error cancelling incomplete upsell subscription:", cancelErr);
+          }
+        }
       } else {
-        const stripeProduct = await stripe.products.create({
-          name: product.name || "Digital Content",
-          description: product.description || "Access to digital content",
-          metadata: { product_id: product.id }
-        });
-        stripeProductId = stripeProduct.id;
-
-        const newPrice = await stripe.prices.create({
-          product: stripeProductId,
-          unit_amount: Math.round(amount * 100),
+        // ── FLUXO DE PAGAMENTO ÚNICO ──
+        const newPi = await stripe.paymentIntents.create({
+          amount: Math.round(amount * 100),
           currency: currency.toLowerCase(),
-          recurring: { interval: "month" }
+          customer: customerId,
+          payment_method: pmId,
+          off_session: true,
+          confirm: true,
+          error_on_requires_action: true,
+          metadata: {
+            strategy_id: strategy.id,
+            parent_pi: parentPiId || previous_pi,
+            product_id: product.id,
+            user_id: strategy.user_id,
+            is_upsell: "true",
+            customer_name: previousSale?.customer_name || "",
+            customer_email: previousSale?.customer_email || ""
+          }
         });
-        priceId = newPrice.id;
+
+        newPiId = newPi.id;
+
+        if (newPi.status === "succeeded") {
+          isApproved = true;
+          console.log("Upsell Success! New PI:", newPi.id);
+        } else {
+          isApproved = false;
+          const lastErr = newPi.last_payment_error;
+          failureReason = lastErr?.message || lastErr?.decline_code ||
+            (newPi.status === "requires_action"
+              ? "Autenticação adicional (3DS) exigida pelo banco"
+              : `Pagamento não aprovado (Status: ${newPi.status})`);
+          console.warn("Upsell Payment Not Approved! Status:", newPi.status, "Reason:", failureReason);
+        }
       }
-
-      // Criar assinatura One-Click (off-session)
-      const subscription = await stripe.subscriptions.create({
-        customer: customerId,
-        items: [{ price: priceId }],
-        default_payment_method: pmId,
-        off_session: true,
-        payment_behavior: "allow_incomplete",
-        expand: ["latest_invoice", "latest_invoice.payment_intent"],
-        metadata: {
-          strategy_id: strategy.id,
-          parent_pi: parentPiId || previous_pi,
-          product_id: product.id,
-          user_id: strategy.user_id,
-          is_upsell: "true",
-          customer_name: previousSale?.customer_name || "",
-          customer_email: previousSale?.customer_email || ""
-        }
-      });
-
-      subscriptionId = subscription.id;
-      const invoice = subscription.latest_invoice as any;
-      const invoicePaymentIntent = invoice?.payment_intent;
-      newPiId = typeof invoicePaymentIntent === "object" && invoicePaymentIntent
-        ? invoicePaymentIntent.id
-        : (typeof invoicePaymentIntent === "string" ? invoicePaymentIntent : subscription.id);
-
-      console.log("Upsell Subscription Success! ID:", subscription.id, "PI:", newPiId);
-    } else {
-      // ── FLUXO DE PAGAMENTO ÚNICO ──
-      const newPi = await stripe.paymentIntents.create({
-        amount: Math.round(amount * 100),
-        currency: currency.toLowerCase(),
-        customer: customerId,
-        payment_method: pmId,
-        off_session: true,
-        confirm: true,
-        metadata: {
-          strategy_id: strategy.id,
-          parent_pi: parentPiId || previous_pi,
-          product_id: product.id,
-          user_id: strategy.user_id,
-          is_upsell: "true",
-          customer_name: previousSale?.customer_name || "",
-          customer_email: previousSale?.customer_email || ""
-        }
-      });
-
-      newPiId = newPi.id;
-      console.log("Upsell Success! New PI:", newPi.id);
+    } catch (chargeErr: any) {
+      console.error("Upsell Stripe Charge Error:", chargeErr);
+      isApproved = false;
+      const stripePi = chargeErr.payment_intent || chargeErr.raw?.payment_intent;
+      newPiId = stripePi?.id || `upsell_failed_${Date.now()}`;
+      failureReason = chargeErr.message || chargeErr.code || chargeErr.decline_code || "Pagamento recusado pela operadora do cartão";
     }
 
     const platformFee = await calculatePlatformFee(strategy.user_id, amount, currency);
@@ -289,6 +332,7 @@ export async function POST(req: Request) {
       currency: currency,
       platform_fee: platformFee,
       status: "pending",
+      failure_reason: isApproved ? null : failureReason,
       is_orderbump: false
     });
 
@@ -296,8 +340,6 @@ export async function POST(req: Request) {
       console.error("Error recording upsell sale:", saleError);
       throw new Error("Falha ao registrar a venda do upsell no banco de dados.");
     }
-    // 6. Trigger post-purchase actions (Emails, Webhooks, Utmify, etc)
-    // By calling updateSaleStatus, it updates from pending to succeeded and fires everything!
 
     const trackingData = {
       src: previousSale?.src,
@@ -315,19 +357,34 @@ export async function POST(req: Request) {
       email: previousSale?.customer_email || "",
       phone: previousSale?.customer_phone || "",
       stripe_customer_id: customerId,
-      stripe_payment_method_id: pmId
+      stripe_payment_method_id: pmId,
+      failure_reason: isApproved ? undefined : (failureReason || "Transação não autorizada")
     };
 
-    // Await execution so Vercel doesn't kill the process before emails and webhooks are sent
-    await updateSaleStatus(newPiId, "succeeded", customerData, trackingData).catch(err =>
-      console.error("Upsell post-purchase tasks failed:", err)
-    );
+    if (isApproved) {
+      // Venda aprovada: atualiza para 'succeeded' (dispara webhooks card.paid, e-mails, push, Utmify)
+      await updateSaleStatus(newPiId, "succeeded", customerData, trackingData).catch(err =>
+        console.error("Upsell post-purchase tasks failed:", err)
+      );
 
-    return corsResponse({ success: true, pi: newPiId });
+      return corsResponse({ success: true, pi: newPiId });
+    } else {
+      // Venda NÃO aprovada: atualiza para 'refused' (dispara webhooks card.failed, grava motivo da recusa, Utmify refused)
+      await updateSaleStatus(newPiId, "refused", customerData, trackingData).catch(err =>
+        console.error("Upsell refused status update failed:", err)
+      );
+
+      return corsResponse({
+        success: false,
+        refused: true,
+        error: failureReason || "Pagamento recusado",
+        pi: previous_pi
+      });
+    }
 
   } catch (error: any) {
     console.error("Upsell purchase error:", error);
-    return corsResponse({ error: error.message }, 500);
+    return corsResponse({ success: false, error: error.message }, 500);
   }
 }
 
