@@ -332,7 +332,7 @@ export async function processManualBilling() {
   if (totalFee <= 0) {
     // Zero pending, reset attempts anyway
     await supabaseAdmin.from("profiles")
-      .update({ next_billing_date: new Date(Date.now() + 15 * 24 * 60 * 60 * 1000).toISOString(), billing_failed_attempts: 0 })
+      .update({ billing_failed_attempts: 0 })
       .eq("id", profile.id);
     revalidatePath("/cobrancas");
     return { success: true };
@@ -375,7 +375,6 @@ export async function processManualBilling() {
 
       await supabaseAdmin.from("profiles")
         .update({
-          next_billing_date: new Date(Date.now() + 15 * 24 * 60 * 60 * 1000).toISOString(),
           billing_failed_attempts: 0
         })
         .eq("id", profile.id);

@@ -38,11 +38,10 @@ export async function GET(req: Request) {
     const now = new Date().toISOString();
     console.log(`[CRON] Starting billing check at ${now}`);
 
-    // 2. Find users who are due for billing
+    // 2. Find users who have a Stripe customer configured (non-admin)
     const { data: profiles, error: profileError } = await supabase
       .from("profiles")
       .select("id, stripe_customer_id, plan_id, email, billing_failed_attempts")
-      .lte("next_billing_date", now)
       .not("stripe_customer_id", "is", null)
       .not("is_admin", "eq", true);
 
@@ -51,7 +50,7 @@ export async function GET(req: Request) {
       throw profileError;
     }
 
-    console.log(`[CRON] Found ${profiles?.length ?? 0} profile(s) due for billing.`);
+    console.log(`[CRON] Found ${profiles?.length ?? 0} profile(s) to check for billing.`);
 
     const results = [];
 
@@ -75,11 +74,8 @@ export async function GET(req: Request) {
       console.log(`[CRON] User ${profile.email}: found ${sales.length} unbilled sale(s), total fee: R$ ${totalFee.toFixed(2)}`);
 
       if (totalFee <= 0) {
-        console.log(`[CRON] User ${profile.email}: zero fees due. Advancing next_billing_date by 15 days.`);
-        await supabase.from("profiles")
-          .update({ next_billing_date: new Date(Date.now() + 15 * 24 * 60 * 60 * 1000).toISOString() })
-          .eq("id", profile.id);
-        results.push({ email: profile.email, status: "no_fees_date_updated" });
+        console.log(`[CRON] User ${profile.email}: zero fees due. Skipping.`);
+        results.push({ email: profile.email, status: "no_fees" });
         continue;
       }
 
@@ -102,7 +98,7 @@ export async function GET(req: Request) {
           payment_method: paymentMethods.data[0].id,
           off_session: true,
           confirm: true,
-          description: `Taxas de plataforma meisterpay - Ciclo 15 dias`,
+          description: `Taxas de plataforma meisterpay`,
           metadata: {
             user_id: profile.id,
             type: 'platform_billing'
@@ -119,7 +115,6 @@ export async function GET(req: Request) {
 
           await supabase.from("profiles")
             .update({
-              next_billing_date: new Date(Date.now() + 15 * 24 * 60 * 60 * 1000).toISOString(),
               billing_failed_attempts: 0
             })
             .eq("id", profile.id);
@@ -147,13 +142,11 @@ export async function GET(req: Request) {
           error_message: stripeError.message
         });
 
-        // Increment failed attempts and set next billing to tomorrow
+        // Increment failed attempts
         const failedAttempts = (profile.billing_failed_attempts || 0) + 1;
-        const nextDate = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
 
         await supabase.from("profiles")
           .update({
-            next_billing_date: nextDate,
             billing_failed_attempts: failedAttempts
           })
           .eq("id", profile.id);

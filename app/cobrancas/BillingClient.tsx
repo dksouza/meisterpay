@@ -249,13 +249,8 @@ export default function BillingClient({ initialData }: { initialData: any }) {
           <h3 className="text-3xl font-bold mb-8 tracking-tight">
             {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(totalUnbilled)}
           </h3>
-          <div className="mt-auto pt-6 border-t border-[var(--border-color)] flex flex-col gap-4">
-            <div className="flex items-center justify-between text-[11px] font-bold text-secondary">
-              <span className="uppercase tracking-wider">Próximo Débito</span>
-              <span className="text-primary">{new Date(profile.next_billing_date).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' })}</span>
-            </div>
-
-            {(totalUnbilled > 0 || profile.billing_failed_attempts > 0) && (
+          {(totalUnbilled > 0 || profile.billing_failed_attempts > 0) && (
+            <div className="mt-auto pt-6 border-t border-[var(--border-color)] flex flex-col gap-4">
               <div className="flex flex-col gap-2">
                 <button
                   onClick={handleManualPayment}
@@ -266,8 +261,8 @@ export default function BillingClient({ initialData }: { initialData: any }) {
                   {isPaying ? <Loader2 className="animate-spin" size={14} /> : "Efetuar pagamento agora"}
                 </button>
               </div>
-            )}
-          </div>
+            </div>
+          )}
         </div>
 
         <div className="card hover:border-emerald-500\/20 transition-all flex flex-col justify-between">
@@ -416,7 +411,6 @@ export default function BillingClient({ initialData }: { initialData: any }) {
 
                   <div className="space-y-4 px-1">
                     {[
-                      'Ciclo de 15 dias',
                       'Saques Ilimitados',
                       'Checkout Otimizado',
                       id === 'standard' ? 'Suporte Ticket' : id === 'pro' ? 'Suporte Prioritário' : 'Gerente de Contas'
