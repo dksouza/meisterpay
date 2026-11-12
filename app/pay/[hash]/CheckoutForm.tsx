@@ -232,6 +232,7 @@ function CheckoutFormContent({
       },
       requestPayerName: true,
       requestPayerEmail: true,
+      disableWallets: ['link'],
     });
 
     pr.canMakePayment().then((result) => {
