@@ -316,6 +316,13 @@ export default function CajuPayCheckoutForm({
               <select name="country_code" className="country-select-real" defaultValue="+55">
                 <option value="+55">🇧🇷 +55</option>
                 <option value="+1">🇺🇸 +1</option>
+                <option value="+351">🇵🇹 +351</option>
+                <option value="+34">🇪🇸 +34</option>
+                <option value="+32">🇧🇪 +32</option>
+                <option value="+33">🇫🇷 +33</option>
+                <option value="+44">🇬🇧 +44</option>
+                <option value="+49">🇩🇪 +49</option>
+                <option value="+39">🇮🇹 +39</option>
               </select>
               <input name="customer_phone" autoComplete="tel" type="tel" className="checkout-input mb-0 flex-1" placeholder={t.phonePlaceholder} required />
             </div>

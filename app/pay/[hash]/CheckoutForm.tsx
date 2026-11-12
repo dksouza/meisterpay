@@ -464,7 +464,7 @@ function CheckoutFormContent({
     const postalCodeVal = ((formData.get("customer_postal_code") as string) || "").trim();
     const phonePrefixToCountry: Record<string, string> = {
       "+55": "BR", "+1": "US", "+351": "PT", "+34": "ES", "+52": "MX", "+44": "GB",
-      "+49": "DE", "+33": "FR", "+39": "IT", "+61": "AU", "+81": "JP", "+86": "CN",
+      "+49": "DE", "+33": "FR", "+32": "BE", "+39": "IT", "+61": "AU", "+81": "JP", "+86": "CN",
       "+7": "RU", "+91": "IN", "+54": "AR", "+56": "CL", "+57": "CO", "+51": "PE",
       "+58": "VE", "+598": "UY", "+595": "PY", "+591": "BO", "+593": "EC", "+506": "CR",
       "+507": "PA", "+502": "GT", "+503": "SV", "+504": "HN", "+505": "NI", "+53": "CU"
@@ -640,7 +640,7 @@ function CheckoutFormContent({
             defaultValue={
               (detectedCountry && {
                 BR: "+55", US: "+1", CA: "+1", PT: "+351", ES: "+34", MX: "+52", GB: "+44",
-                DE: "+49", FR: "+33", IT: "+39", AU: "+61", JP: "+81", CN: "+86", RU: "+7",
+                DE: "+49", FR: "+33", BE: "+32", IT: "+39", AU: "+61", JP: "+81", CN: "+86", RU: "+7",
                 IN: "+91", AR: "+54", CL: "+56", CO: "+57", PE: "+51", VE: "+58", UY: "+598",
                 PY: "+595", BO: "+591", EC: "+593", CR: "+506", PA: "+507", GT: "+502", SV: "+503",
                 HN: "+504", NI: "+505", CU: "+53", DO: "+1809", HT: "+509", EG: "+20", ZA: "+27",
@@ -657,6 +657,7 @@ function CheckoutFormContent({
             <option value="+44">🇬🇧 +44</option>
             <option value="+49">🇩🇪 +49</option>
             <option value="+33">🇫🇷 +33</option>
+            <option value="+32">🇧🇪 +32</option>
             <option value="+39">🇮🇹 +39</option>
             <option value="+1">🇨🇦 +1</option>
             <option value="+61">🇦🇺 +61</option>
