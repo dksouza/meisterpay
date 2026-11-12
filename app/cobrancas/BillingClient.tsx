@@ -124,7 +124,43 @@ export default function BillingClient({ initialData }: { initialData: any }) {
   const [planToConfirm, setPlanToConfirm] = useState<string | null>(null);
   const [updateError, setUpdateError] = useState<string | null>(null);
   const [isPaying, setIsPaying] = useState(false);
+  const [isRunningBulkBilling, setIsRunningBulkBilling] = useState(false);
   const [toast, setToast] = useState<{ message: string, type: 'success' | 'error' } | null>(null);
+
+  const handleRunBulkBilling = async () => {
+    setIsRunningBulkBilling(true);
+    setToast(null);
+    try {
+      const response = await fetch(
+        "/api/cron/process-billing?token=e34c048656d33a12dbb1c45b973a526d7570aad9f78ce20b7ebc329ec6cf15f6",
+        { method: "GET", cache: "no-store" }
+      );
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || "Falha ao executar cobrança em lote.");
+      }
+
+      const results = data.results || [];
+      const successCount = results.filter((r: any) => r.status === "success").length;
+      const failedCount = results.filter((r: any) => r.status === "failed").length;
+
+      setToast({
+        message: `Cobrança executada! ${successCount} aprovada(s)${failedCount > 0 ? `, ${failedCount} recusada(s)` : ""}.`,
+        type: failedCount > 0 && successCount === 0 ? "error" : "success"
+      });
+
+      setTimeout(() => {
+        window.location.reload();
+      }, 2000);
+    } catch (err: any) {
+      console.error(err);
+      setToast({ message: err.message || "Erro ao disparar cobranças.", type: "error" });
+      setTimeout(() => setToast(null), 4000);
+    } finally {
+      setIsRunningBulkBilling(false);
+    }
+  };
 
   const handleManualPayment = async () => {
     setIsPaying(true);
@@ -207,7 +243,26 @@ export default function BillingClient({ initialData }: { initialData: any }) {
           </p>
         </div>
 
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-4 flex-wrap">
+          {profile?.is_admin && (
+            <button
+              onClick={handleRunBulkBilling}
+              disabled={isRunningBulkBilling}
+              className="btn-primary py-2.5 px-5 rounded-2xl flex items-center gap-2.5 text-xs font-bold shadow-lg"
+            >
+              {isRunningBulkBilling ? (
+                <>
+                  <Loader2 size={16} className="animate-spin" />
+                  <span>Processando Cobranças...</span>
+                </>
+              ) : (
+                <>
+                  <DollarSign size={16} strokeWidth={2.5} />
+                  <span>Efetuar Todas as Cobranças</span>
+                </>
+              )}
+            </button>
+          )}
           <div className="px-4 py-2 bg-[var(--bg-card)] border border-[var(--border-color)] rounded-2xl flex items-center gap-3 shadow-sm">
             <Shield size={16} className="text-emerald-500" />
             <span className="text-xs font-bold text-secondary uppercase tracking-widest">

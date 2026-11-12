@@ -5,8 +5,8 @@ export const dynamic = 'force-dynamic';
 
 
 import { useEffect, useState } from "react";
-import { UserCheck, UserX, Clock, Search, AlertCircle, ShieldCheck, Eye, CreditCard, DollarSign, X, Edit2, Check, TrendingUp, Flame, ExternalLink, Copy, PackageCheck, Zap, ArrowUpRight, CheckCircle2, ShoppingBag } from "lucide-react";
-import { getPendingUsers, approveUser, rejectUser, getUserDetailsForAdmin, updateUserFee } from "../../actions/adminActions";
+import { UserCheck, UserX, Clock, Search, AlertCircle, ShieldCheck, Eye, CreditCard, DollarSign, X, Edit2, Check, TrendingUp, Flame, ExternalLink, Copy, PackageCheck, Zap, ArrowUpRight, CheckCircle2, ShoppingBag, Loader2 } from "lucide-react";
+import { getPendingUsers, approveUser, rejectUser, getUserDetailsForAdmin, updateUserFee, chargeUserByAdmin } from "../../actions/adminActions";
 import { useLoading } from "../../context/LoadingContext";
 import { Header } from "../../components/Header";
 
@@ -21,6 +21,8 @@ export default function AdminApprovalsPage() {
   const [editingFee, setEditingFee] = useState(false);
   const [feeValue, setFeeValue] = useState("");
   const [copiedLinkKey, setCopiedLinkKey] = useState<string | null>(null);
+  const [isChargingUser, setIsChargingUser] = useState(false);
+  const [chargeFeedback, setChargeFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
 
   const handleCopyText = (text: string, key: string) => {
     try {
@@ -68,6 +70,7 @@ export default function AdminApprovalsPage() {
   const handleViewDetails = async (id: string) => {
     setIsLoading(true);
     setEditingFee(false);
+    setChargeFeedback(null);
     const result = await getUserDetailsForAdmin(id);
     if (result.success) {
       setSelectedUserDetails(result.details);
@@ -77,6 +80,44 @@ export default function AdminApprovalsPage() {
       alert(result.error || "Erro ao carregar detalhes do usuário");
     }
     setIsLoading(false);
+  };
+
+  const handleChargeUser = async () => {
+    if (!selectedUserDetails?.profile?.id) return;
+    setIsChargingUser(true);
+    setChargeFeedback(null);
+
+    try {
+      const result = await chargeUserByAdmin(selectedUserDetails.profile.id);
+      if (result.success) {
+        const formattedAmt = (result.amountCharged || selectedUserDetails.pendingFees || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+        setChargeFeedback({
+          type: 'success',
+          message: `Cobrança de ${formattedAmt} realizada com sucesso!`
+        });
+        setSelectedUserDetails({
+          ...selectedUserDetails,
+          pendingFees: 0,
+          isInadimplente: false
+        });
+      } else {
+        setChargeFeedback({
+          type: 'error',
+          message: result.error || "Erro ao processar cobrança."
+        });
+        setSelectedUserDetails({
+          ...selectedUserDetails,
+          isInadimplente: true
+        });
+      }
+    } catch (err: any) {
+      setChargeFeedback({
+        type: 'error',
+        message: err.message || "Falha inesperada ao cobrar usuário."
+      });
+    } finally {
+      setIsChargingUser(false);
+    }
   };
 
   const handleSaveFee = async () => {
@@ -475,11 +516,59 @@ export default function AdminApprovalsPage() {
                     )}
                   </div>
 
-                  <div style={{ marginTop: '8px', textAlign: 'right' }}>
-                    <p style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
+                  <div style={{ marginTop: '8px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '12px', paddingTop: '12px', borderTop: '1px solid var(--border-color)' }}>
+                    <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', margin: 0 }}>
                       Taxas pendentes de faturamento: <span style={{ fontWeight: 'bold', color: 'var(--text-primary)' }}>{(selectedUserDetails.pendingFees).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</span>
                     </p>
+
+                    <button
+                      onClick={handleChargeUser}
+                      disabled={isChargingUser || !selectedUserDetails.hasCard || (selectedUserDetails.pendingFees || 0) <= 0}
+                      className="btn-primary"
+                      style={{
+                        padding: '8px 14px',
+                        fontSize: '0.78rem',
+                        fontWeight: 'bold',
+                        borderRadius: '8px',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '6px',
+                        opacity: (isChargingUser || !selectedUserDetails.hasCard || (selectedUserDetails.pendingFees || 0) <= 0) ? 0.5 : 1,
+                        cursor: (isChargingUser || !selectedUserDetails.hasCard || (selectedUserDetails.pendingFees || 0) <= 0) ? 'not-allowed' : 'pointer'
+                      }}
+                      title={!selectedUserDetails.hasCard ? "Usuário não possui cartão cadastrado" : (selectedUserDetails.pendingFees || 0) <= 0 ? "Não há taxas pendentes para cobrar" : "Cobrar taxas pendentes agora"}
+                    >
+                      {isChargingUser ? (
+                        <>
+                          <Loader2 size={14} className="animate-spin" />
+                          Cobrando...
+                        </>
+                      ) : (
+                        <>
+                          <CreditCard size={14} />
+                          Efetuar Cobrança
+                        </>
+                      )}
+                    </button>
                   </div>
+
+                  {chargeFeedback && (
+                    <div style={{
+                      padding: '10px 12px',
+                      borderRadius: '8px',
+                      fontSize: '0.78rem',
+                      fontWeight: '600',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '8px',
+                      backgroundColor: chargeFeedback.type === 'success' ? 'rgba(34, 197, 94, 0.12)' : 'rgba(239, 68, 68, 0.12)',
+                      color: chargeFeedback.type === 'success' ? '#22c55e' : '#ef4444',
+                      border: `1px solid ${chargeFeedback.type === 'success' ? 'rgba(34, 197, 94, 0.25)' : 'rgba(239, 68, 68, 0.25)'}`
+                    }}>
+                      {chargeFeedback.type === 'success' ? <Check size={15} /> : <AlertCircle size={15} />}
+                      <span>{chargeFeedback.message}</span>
+                    </div>
+                  )}
                 </div>
               </div>
 

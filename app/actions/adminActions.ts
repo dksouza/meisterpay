@@ -392,16 +392,17 @@ export async function getUserDetailsForAdmin(userId: string) {
 
   const topOffers = offersWithStats.slice(0, 3);
 
-  // Check if there are failed charges in history using supabaseAdmin
-  const { data: failedCharges } = await supabaseAdmin
+  // Check if the latest charge failed or user has failed attempts using supabaseAdmin
+  const { data: latestCharges } = await supabaseAdmin
     .from("billing_history")
-    .select("*")
+    .select("status")
     .eq("user_id", userId)
-    .eq("status", "failed")
     .order("created_at", { ascending: false })
     .limit(1);
 
-  const isInadimplente = failedCharges && failedCharges.length > 0;
+  const isInadimplente =
+    (userProfile.billing_failed_attempts || 0) > 0 ||
+    (latestCharges && latestCharges.length > 0 && latestCharges[0].status === "failed");
 
   return {
     success: true,
@@ -444,4 +445,130 @@ export async function updateUserFee(userId: string, feePercentage: number) {
   if (error) return { error: error.message };
 
   return { success: true };
+}
+
+export async function chargeUserByAdmin(userId: string) {
+  const supabase = await createClient();
+
+  // Verify if current user is admin
+  const { data: { user: currentUser } } = await supabase.auth.getUser();
+  if (!currentUser) return { error: "Não autorizado" };
+
+  const { data: adminProfile } = await supabase
+    .from("profiles")
+    .select("is_admin")
+    .eq("id", currentUser.id)
+    .single();
+
+  if (!adminProfile?.is_admin) return { error: "Acesso restrito a administradores" };
+
+  const supabaseAdmin = createAdminClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  );
+
+  const { data: profile, error: profileErr } = await supabaseAdmin
+    .from("profiles")
+    .select("*")
+    .eq("id", userId)
+    .single();
+
+  if (profileErr || !profile) {
+    return { error: "Usuário não encontrado" };
+  }
+
+  if (!profile.stripe_customer_id) {
+    return { error: "Este usuário não possui cliente/cartão configurado na Stripe." };
+  }
+
+  const { data: sales, error: salesErr } = await supabaseAdmin
+    .from("sales")
+    .select("id, platform_fee")
+    .eq("user_id", profile.id)
+    .eq("is_fee_billed", false)
+    .eq("status", "succeeded");
+
+  if (salesErr) {
+    return { error: "Erro ao buscar vendas pendentes do usuário." };
+  }
+
+  const totalFee = sales?.reduce((acc, s) => acc + (Number(s.platform_fee) || 0), 0) || 0;
+
+  if (totalFee <= 0) {
+    return { error: "Este usuário não possui taxas pendentes para cobrança." };
+  }
+
+  const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
+    apiVersion: "2023-10-16",
+  } as any);
+
+  try {
+    const paymentMethods = await stripe.paymentMethods.list({
+      customer: profile.stripe_customer_id,
+      type: "card",
+    });
+
+    if (paymentMethods.data.length === 0) {
+      return { error: "Nenhum cartão cadastrado para este usuário." };
+    }
+
+    const paymentIntent = await stripe.paymentIntents.create({
+      amount: Math.round(totalFee * 100),
+      currency: "brl",
+      customer: profile.stripe_customer_id,
+      payment_method: paymentMethods.data[0].id,
+      off_session: true,
+      confirm: true,
+      description: `Taxas de plataforma meisterpay`,
+      metadata: {
+        user_id: profile.id,
+        type: "platform_billing",
+        triggered_by: "admin"
+      }
+    });
+
+    if (paymentIntent.status === "succeeded") {
+      const saleIds = sales!.map((s) => s.id);
+
+      await supabaseAdmin
+        .from("sales")
+        .update({ is_fee_billed: true })
+        .in("id", saleIds);
+
+      await supabaseAdmin
+        .from("profiles")
+        .update({ billing_failed_attempts: 0 })
+        .eq("id", profile.id);
+
+      await supabaseAdmin.from("billing_history").insert({
+        user_id: profile.id,
+        amount: totalFee,
+        status: "succeeded",
+        stripe_payment_intent_id: paymentIntent.id
+      });
+
+      revalidatePath("/admin/aprovacoes");
+      revalidatePath("/cobrancas");
+      return { success: true, amountCharged: totalFee };
+    } else {
+      throw new Error(`Status de pagamento inválido: ${paymentIntent.status}`);
+    }
+  } catch (stripeError: any) {
+    console.error(`[Admin Charge] Error charging user ${profile.email}:`, stripeError.message);
+
+    await supabaseAdmin.from("billing_history").insert({
+      user_id: profile.id,
+      amount: totalFee,
+      status: "failed",
+      error_message: stripeError.message
+    });
+
+    const failedAttempts = (profile.billing_failed_attempts || 0) + 1;
+    await supabaseAdmin
+      .from("profiles")
+      .update({ billing_failed_attempts: failedAttempts })
+      .eq("id", profile.id);
+
+    return { error: stripeError.message || "Falha ao cobrar cartão do usuário." };
+  }
 }
