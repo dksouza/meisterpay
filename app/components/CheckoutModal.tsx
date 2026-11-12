@@ -24,6 +24,7 @@ export function CheckoutModal({ isOpen, onClose, onSuccess, initialData, fixedPr
   const [isSubscription, setIsSubscription] = useState(false);
   const [showBanner, setShowBanner] = useState(false);
   const [enableWallets, setEnableWallets] = useState(true);
+  const [enablePhone, setEnablePhone] = useState(true);
   const [enableTimer, setEnableTimer] = useState(false);
   const [timerMinutes, setTimerMinutes] = useState(15);
   const [timerText, setTimerText] = useState("Oferta expira em");
@@ -40,6 +41,7 @@ export function CheckoutModal({ isOpen, onClose, onSuccess, initialData, fixedPr
       setIsSubscription(initialData.payment_type === "subscription");
       setShowBanner(initialData.show_banner || false);
       setEnableWallets(initialData.enable_wallets !== false); // default true
+      setEnablePhone(initialData.enable_phone !== false); // default true
       setEnableTimer(initialData.enable_timer || false);
       setTimerMinutes(initialData.timer_minutes || 15);
       setTimerText(initialData.timer_text || "Oferta expira em");
@@ -50,6 +52,7 @@ export function CheckoutModal({ isOpen, onClose, onSuccess, initialData, fixedPr
       setIsSubscription(false);
       setShowBanner(false);
       setEnableWallets(true);
+      setEnablePhone(true);
       setEnableTimer(false);
       setTimerMinutes(15);
       setTimerText("Oferta expira em");
@@ -141,6 +144,7 @@ export function CheckoutModal({ isOpen, onClose, onSuccess, initialData, fixedPr
     formData.set("payment_type", isSubscription ? "subscription" : "single");
     formData.set("show_banner", showBanner.toString());
     formData.set("enable_wallets", enableWallets.toString());
+    formData.set("enable_phone", enablePhone.toString());
     formData.set("enable_timer", enableTimer.toString());
     formData.set("timer_minutes", timerMinutes.toString());
     formData.set("timer_text", timerText);
@@ -323,6 +327,27 @@ export function CheckoutModal({ isOpen, onClose, onSuccess, initialData, fixedPr
             </div>
             <p className="text-xs text-secondary mt-2">
               Se habilitado, as opções de Google Pay e Apple Pay serão exibidas no checkout quando disponíveis.
+            </p>
+          </div>
+
+          <div className="form-group">
+            <label className="form-label">Campo de Telefone</label>
+            <div className="flex items-center justify-between p-4 bg-input rounded-xl border border-color">
+              <span className="text-sm font-medium">Exibir Telefone no Checkout</span>
+              <label className="switch-container">
+                <input
+                  type="checkbox"
+                  className="hidden"
+                  checked={enablePhone}
+                  onChange={(e) => setEnablePhone(e.target.checked)}
+                />
+                <div className="switch-track">
+                  <div className="switch-thumb"></div>
+                </div>
+              </label>
+            </div>
+            <p className="text-xs text-secondary mt-2">
+              Se desabilitado, o campo de telefone não será exibido nem exigido no checkout.
             </p>
           </div>
 

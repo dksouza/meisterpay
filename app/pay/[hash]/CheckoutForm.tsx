@@ -471,10 +471,14 @@ function CheckoutFormContent({
     };
     const derivedCountry = detectedCountry || phonePrefixToCountry[countryCodePrefix] || "US";
 
+    const showPhone = checkout?.enable_phone !== false;
+    const phoneVal = (formData.get("customer_phone") as string)?.trim();
+    const phoneStr = showPhone && phoneVal ? `${countryCodePrefix} ${phoneVal}` : "";
+
     const customerData = {
       name: formData.get("customer_name") as string,
       email: formData.get("customer_email") as string,
-      phone: `${countryCodePrefix} ${formData.get("customer_phone")}`,
+      phone: phoneStr || undefined,
     };
 
     // Capture tracking parameters and IP
@@ -599,6 +603,8 @@ function CheckoutFormContent({
 
   const [isStripeLoaded, setIsStripeLoaded] = useState(false);
 
+  const showPhone = checkout?.enable_phone !== false;
+
   return (
     <form ref={formRef} onSubmit={handleSubmit}>
       {/* WALLET BUTTONS: Google Pay / Apple Pay */}
@@ -631,77 +637,81 @@ function CheckoutFormContent({
         <label className="checkout-form-label">{t.email}</label>
         <input name="customer_email" autoComplete="email" type="email" className="checkout-input" placeholder={t.emailPlaceholder} required />
 
-        <label className="checkout-form-label">{t.phone}</label>
-        <div className="phone-input-group">
-          <select
-            key={detectedCountry}
-            name="country_code"
-            className="country-select-real"
-            defaultValue={
-              (detectedCountry && {
-                BR: "+55", US: "+1", CA: "+1", PT: "+351", ES: "+34", MX: "+52", GB: "+44",
-                DE: "+49", FR: "+33", BE: "+32", IT: "+39", AU: "+61", JP: "+81", CN: "+86", RU: "+7",
-                IN: "+91", AR: "+54", CL: "+56", CO: "+57", PE: "+51", VE: "+58", UY: "+598",
-                PY: "+595", BO: "+591", EC: "+593", CR: "+506", PA: "+507", GT: "+502", SV: "+503",
-                HN: "+504", NI: "+505", CU: "+53", DO: "+1809", HT: "+509", EG: "+20", ZA: "+27",
-                NG: "+234", KE: "+254", MA: "+212", AE: "+971", SA: "+966", IL: "+972", TR: "+90",
-                KR: "+82", TH: "+66", VN: "+84", ID: "+62", MY: "+60", PH: "+63", NZ: "+64"
-              }[detectedCountry]) || "+1"
-            }
-          >
-            <option value="+1">🇺🇸 +1</option>
-            <option value="+55">🇧🇷 +55</option>
-            <option value="+351">🇵🇹 +351</option>
-            <option value="+34">🇪🇸 +34</option>
-            <option value="+52">🇲🇽 +52</option>
-            <option value="+44">🇬🇧 +44</option>
-            <option value="+49">🇩🇪 +49</option>
-            <option value="+33">🇫🇷 +33</option>
-            <option value="+32">🇧🇪 +32</option>
-            <option value="+39">🇮🇹 +39</option>
-            <option value="+1">🇨🇦 +1</option>
-            <option value="+61">🇦🇺 +61</option>
-            <option value="+81">🇯🇵 +81</option>
-            <option value="+86">🇨🇳 +86</option>
-            <option value="+7">🇷🇺 +7</option>
-            <option value="+91">🇮🇳 +91</option>
-            <option value="+54">🇦🇷 +54</option>
-            <option value="+56">🇨🇱 +56</option>
-            <option value="+57">🇨🇴 +57</option>
-            <option value="+51">🇵🇪 +51</option>
-            <option value="+58">🇻🇪 +58</option>
-            <option value="+598">🇺🇾 +598</option>
-            <option value="+595">🇵🇾 +595</option>
-            <option value="+591">🇧🇴 +591</option>
-            <option value="+593">🇪🇨 +593</option>
-            <option value="+506">🇨🇷 +506</option>
-            <option value="+507">🇵🇦 +507</option>
-            <option value="+502">🇬🇹 +502</option>
-            <option value="+503">🇸🇻 +503</option>
-            <option value="+504">🇭🇳 +504</option>
-            <option value="+505">🇳🇮 +505</option>
-            <option value="+53">🇨🇺 +53</option>
-            <option value="+1809">🇩🇴 +1</option>
-            <option value="+509">🇭🇹 +509</option>
-            <option value="+20">🇪🇬 +20</option>
-            <option value="+27">🇿🇦 +27</option>
-            <option value="+234">🇳🇬 +234</option>
-            <option value="+254">🇰🇪 +254</option>
-            <option value="+212">🇲🇦 +212</option>
-            <option value="+971">🇦🇪 +971</option>
-            <option value="+966">🇸🇦 +966</option>
-            <option value="+972">🇮🇱 +972</option>
-            <option value="+90">🇹🇷 +90</option>
-            <option value="+82">🇰🇷 +82</option>
-            <option value="+66">🇹🇭 +66</option>
-            <option value="+84">🇻🇳 +84</option>
-            <option value="+62">🇮🇩 +62</option>
-            <option value="+60">🇲🇾 +60</option>
-            <option value="+63">🇵🇭 +63</option>
-            <option value="+64">🇳🇿 +64</option>
-          </select>
-          <input name="customer_phone" autoComplete="tel" type="tel" className="checkout-input mb-0 flex-1" placeholder={t.phonePlaceholder} required />
-        </div>
+        {showPhone && (
+          <>
+            <label className="checkout-form-label">{t.phone}</label>
+            <div className="phone-input-group">
+              <select
+                key={detectedCountry}
+                name="country_code"
+                className="country-select-real"
+                defaultValue={
+                  (detectedCountry && {
+                    BR: "+55", US: "+1", CA: "+1", PT: "+351", ES: "+34", MX: "+52", GB: "+44",
+                    DE: "+49", FR: "+33", BE: "+32", IT: "+39", AU: "+61", JP: "+81", CN: "+86", RU: "+7",
+                    IN: "+91", AR: "+54", CL: "+56", CO: "+57", PE: "+51", VE: "+58", UY: "+598",
+                    PY: "+595", BO: "+591", EC: "+593", CR: "+506", PA: "+507", GT: "+502", SV: "+503",
+                    HN: "+504", NI: "+505", CU: "+53", DO: "+1809", HT: "+509", EG: "+20", ZA: "+27",
+                    NG: "+234", KE: "+254", MA: "+212", AE: "+971", SA: "+966", IL: "+972", TR: "+90",
+                    KR: "+82", TH: "+66", VN: "+84", ID: "+62", MY: "+60", PH: "+63", NZ: "+64"
+                  }[detectedCountry]) || "+1"
+                }
+              >
+                <option value="+1">🇺🇸 +1</option>
+                <option value="+55">🇧🇷 +55</option>
+                <option value="+351">🇵🇹 +351</option>
+                <option value="+34">🇪🇸 +34</option>
+                <option value="+52">🇲🇽 +52</option>
+                <option value="+44">🇬🇧 +44</option>
+                <option value="+49">🇩🇪 +49</option>
+                <option value="+33">🇫🇷 +33</option>
+                <option value="+32">🇧🇪 +32</option>
+                <option value="+39">🇮🇹 +39</option>
+                <option value="+1">🇨🇦 +1</option>
+                <option value="+61">🇦🇺 +61</option>
+                <option value="+81">🇯🇵 +81</option>
+                <option value="+86">🇨🇳 +86</option>
+                <option value="+7">🇷🇺 +7</option>
+                <option value="+91">🇮🇳 +91</option>
+                <option value="+54">🇦🇷 +54</option>
+                <option value="+56">🇨🇱 +56</option>
+                <option value="+57">🇨🇴 +57</option>
+                <option value="+51">🇵🇪 +51</option>
+                <option value="+58">🇻🇪 +58</option>
+                <option value="+598">🇺🇾 +598</option>
+                <option value="+595">🇵🇾 +595</option>
+                <option value="+591">🇧🇴 +591</option>
+                <option value="+593">🇪🇨 +593</option>
+                <option value="+506">🇨🇷 +506</option>
+                <option value="+507">🇵🇦 +507</option>
+                <option value="+502">🇬🇹 +502</option>
+                <option value="+503">🇸🇻 +503</option>
+                <option value="+504">🇭🇳 +504</option>
+                <option value="+505">🇳🇮 +505</option>
+                <option value="+53">🇨🇺 +53</option>
+                <option value="+1809">🇩🇴 +1</option>
+                <option value="+509">🇭🇹 +509</option>
+                <option value="+20">🇪🇬 +20</option>
+                <option value="+27">🇿🇦 +27</option>
+                <option value="+234">🇳🇬 +234</option>
+                <option value="+254">🇰🇪 +254</option>
+                <option value="+212">🇲🇦 +212</option>
+                <option value="+971">🇦🇪 +971</option>
+                <option value="+966">🇸🇦 +966</option>
+                <option value="+972">🇮🇱 +972</option>
+                <option value="+90">🇹🇷 +90</option>
+                <option value="+82">🇰🇷 +82</option>
+                <option value="+66">🇹🇭 +66</option>
+                <option value="+84">🇻🇳 +84</option>
+                <option value="+62">🇮🇩 +62</option>
+                <option value="+60">🇲🇾 +60</option>
+                <option value="+63">🇵🇭 +63</option>
+                <option value="+64">🇳🇿 +64</option>
+              </select>
+              <input name="customer_phone" autoComplete="tel" type="tel" className="checkout-input mb-0 flex-1" placeholder={t.phonePlaceholder} required />
+            </div>
+          </>
+        )}
 
         <label className="checkout-form-label mt-4">{t.postalCode}</label>
         <input name="customer_postal_code" autoComplete="postal-code" type="text" className="checkout-input" placeholder={t.postalCodePlaceholder} required />

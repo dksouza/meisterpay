@@ -34,6 +34,7 @@ export default function CajuPayCheckoutForm({
 
   const t = translations[lang];
   const formRef = useRef<HTMLFormElement>(null);
+  const showPhone = checkout?.enable_phone !== false;
   
   // CajuPay SDK state
   const [isSdkLoaded, setIsSdkLoaded] = useState(false);
@@ -311,21 +312,25 @@ export default function CajuPayCheckoutForm({
             <label className="checkout-form-label">CPF ou CNPJ</label>
             <input name="customer_doc" autoComplete="off" type="text" className="checkout-input" placeholder="000.000.000-00" required />
 
-            <label className="checkout-form-label">{t.phone}</label>
-            <div className="phone-input-group">
-              <select name="country_code" className="country-select-real" defaultValue="+55">
-                <option value="+55">🇧🇷 +55</option>
-                <option value="+1">🇺🇸 +1</option>
-                <option value="+351">🇵🇹 +351</option>
-                <option value="+34">🇪🇸 +34</option>
-                <option value="+32">🇧🇪 +32</option>
-                <option value="+33">🇫🇷 +33</option>
-                <option value="+44">🇬🇧 +44</option>
-                <option value="+49">🇩🇪 +49</option>
-                <option value="+39">🇮🇹 +39</option>
-              </select>
-              <input name="customer_phone" autoComplete="tel" type="tel" className="checkout-input mb-0 flex-1" placeholder={t.phonePlaceholder} required />
-            </div>
+            {showPhone && (
+              <>
+                <label className="checkout-form-label">{t.phone}</label>
+                <div className="phone-input-group">
+                  <select name="country_code" className="country-select-real" defaultValue="+55">
+                    <option value="+55">🇧🇷 +55</option>
+                    <option value="+1">🇺🇸 +1</option>
+                    <option value="+351">🇵🇹 +351</option>
+                    <option value="+34">🇪🇸 +34</option>
+                    <option value="+32">🇧🇪 +32</option>
+                    <option value="+33">🇫🇷 +33</option>
+                    <option value="+44">🇬🇧 +44</option>
+                    <option value="+49">🇩🇪 +49</option>
+                    <option value="+39">🇮🇹 +39</option>
+                  </select>
+                  <input name="customer_phone" autoComplete="tel" type="tel" className="checkout-input mb-0 flex-1" placeholder={t.phonePlaceholder} required />
+                </div>
+              </>
+            )}
           </div>
 
           <div className="payment-custom-ui">
